@@ -10,6 +10,8 @@
 #include <string.h>
 #include <time.h>
 
+// #define TEST_FUNCTION 1
+
 /* import */
 extern void testFunction(void);
 
@@ -138,6 +140,9 @@ int longOperationId(Option* opts, const char* arg, Option** O)
 	}
 	return 0;
 }
+#ifdef TEST_FUNCTION
+extern void testFunction(void);
+#endif
 
 void operateProject(int argc, const char** argv)
 {
@@ -146,6 +151,9 @@ void operateProject(int argc, const char** argv)
 	int optid = 0, argtype = 0;
 	Option* O = NULL;
 	const char* arg = "";
+#ifdef TEST_FUNCTION
+	testFunction();
+#endif
 	[project setCurrentGroup:@"XCodeControl" ofParent:[project main]];	/* FIXME: change to first main group */
 	/* FIXME: set current target to first target */
 	for(i=1; i<argc; ++i) {
