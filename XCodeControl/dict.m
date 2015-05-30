@@ -5,11 +5,18 @@
 //  Created by Ingo Krabbe on 28.05.15.
 //  Copyright (c) 2015 Ingo Krabbe. All rights reserved.
 //
-
 #import <Foundation/Foundation.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
+/* import */
+extern void testFunction(void);
+
+/* export */
+@class ProjectDict;
+extern void operateProject(int argc, const char** argv);
+extern BOOL addProjectBuildFile(ProjectDict* proj, const char* arg);
 
 typedef struct objectID {
 	char frontByte[2];
@@ -22,6 +29,8 @@ typedef struct objectID {
 	NSMutableDictionary* p;
 	NSMutableDictionary* o;
 	NSMutableArray* path;
+	NSString* group;
+	NSString* target;
 	objectID nextID;
 }
 -(NSString*)sourceFile:(NSString*)sp;
@@ -32,6 +41,10 @@ typedef struct objectID {
 -(NSDictionary*)obj:(NSString*)id;
 -(void)del:(NSString*)id;
 -(NSArray*)sortedObjectKeys;
+-(void)setCurrentGroup:(NSString*)name ofParent:(NSDictionary*)parent;
+-(void)setCurrentTarget:(NSString*)name;
+-(NSString*)currentGroup;
+-(NSString*)currentTarget;
 -(NSArray*)targets;
 -(NSArray*)buildPhasesOf:(NSString*)target;
 +(objectID)getIdFrom:(NSString*)key;
@@ -41,16 +54,147 @@ typedef struct objectID {
 -(void)addTo:(NSString*)name of:(NSString*)objid value:(id)v;
 @end
 
+typedef struct Option Option;
+typedef BOOL(*OptionFunction)(ProjectDict* project, const char* arg);
+struct Option {
+	char c;	/* single char Option or 0 */
+	char* s;	/* long Option or "" */
+	int t;		/* type of argument 0:not-found 1:none, 2:int, 3:string, 4:char, FLAG:8:optional */
+	char* desc;	/* verbose description */
+	OptionFunction func;
+};
+
+enum OptionArgType { optNotFound, optNoArg, optIntArg, optStringArg, optCharArg,
+	optArgFlag=8, optEmbeddedArg=16, optLongFlag=32, optAllFlags=8|16|32 };
+enum OptionNames {
+	optBuildSourceFile,
+	optSetGroup,
+	optSetTarget,
+	optInput,
+	optHelp,
+	optTargetSourceFile,
+	optEndOfOptions
+};
+static Option progopts[optEndOfOptions+1] = {
+	{'b',"buildSourceFile",optStringArg, "add a source file to the current group to be build in all targets", addProjectBuildFile},
+	{'p',"setGroup",optStringArg,"set current group", NULL},
+	{'t',"setTarget",optStringArg,"set current target", NULL},
+	{'i',"input",optStringArg,"read input file", NULL},
+	{'h',"help",optStringArg|optArgFlag,"show help for Option", NULL},
+	{0,"targetSourceFile",optStringArg,"add a source file to the current target", NULL},
+	{0,"",0,"end of options", NULL}
+};
+static int optionId(Option* opts, const char* arg, Option** O); /* returns Option.t+1 or 0 */
+static int shortOperationId(Option* opts, const char* arg, Option** O); /* returns Option.t+1 or 0 */
+static int longOperationId(Option* opts, const char* arg, Option** O); /* returns Option.t+1 or 0 */
+static BOOL operateOn(ProjectDict* project, const Option* O, const char* arg);
+
+/* implementation */
+int optionId(Option* opts, const char* arg, Option** O)
+{
+	if(arg[0]=='-') {
+		if(arg[1]=='-') {
+			return longOperationId(opts,arg+2, O);
+		} else {
+			return shortOperationId(opts,arg+1, O);
+		}
+	} else {
+		return 0;
+	}
+}
+
+int shortOperationId(Option* opts, const char* arg, Option** O)
+{
+	Option*op;
+	for(op=opts; op->t>0;++op) {
+		if(op->c == arg[0]){
+			*O = op;
+			if(arg[1] != 0) {
+				return (op->t|optEmbeddedArg)+1;
+			} else {
+				return op->t + 1;
+			}
+		}
+	}
+	return 0;
+}
+
+int longOperationId(Option* opts, const char* arg, Option** O)
+{
+	Option*op;
+	unsigned l;
+	for(op=opts; op->t>0;++op) {
+		l = (unsigned)strlen(op->s);
+		if(0==memcmp(op->s,arg,l)){
+			*O = op;
+			if(arg[l] == '=') {
+				return (op->t|optEmbeddedArg|optLongFlag)+1;
+			} else if(arg[l]==0){
+				return (op->t|optLongFlag) + 1;
+			} else {
+				return -((op->t|optLongFlag) +1);	/* failure */
+			}
+		}
+	}
+	return 0;
+}
+
 void operateProject(int argc, const char** argv)
 {
 	ProjectDict* project  = [[ProjectDict alloc] init];
-	__block BOOL success;
-	NSString* x = [project path:@"XCodeControl" ofParent:[project main]];	/* group */
+	int i;
+	int optid = 0, argtype = 0;
+	Option* O = NULL;
+	const char* arg = "";
+	[project setCurrentGroup:@"XCodeControl" ofParent:[project main]];	/* FIXME: change to first main group */
+	/* FIXME: set current target to first target */
+	for(i=1; i<argc; ++i) {
+		if(argtype > 0) {
+			arg = argv[i];
+			operateOn(project,O,arg);
+			arg="";
+			O = NULL;
+			argtype = 0;
+		} else {
+			optid = optionId(progopts, argv[i], &O);
+			argtype = optid&~optAllFlags;
+			if(argtype == 0) {
+				NSLog(@"Option failure %d", optid);
+				return;
+			} else if(optid&optEmbeddedArg) {
+				if(optid&optLongFlag) {
+					arg = argv[i]+strlen(O->s)+1;
+				} else {
+					arg = argv[i]+1;
+				}
+				operateOn(project, O, arg);
+				argtype = 0;
+				O = NULL;
+				argtype = 0;
+			}
+		}
+	}
+}
+
+BOOL operateOn(ProjectDict* project, const Option* O, const char* arg)
+{
+	if(O->func) {
+		return O->func(project,arg);
+	}
+	else {
+		NSLog(@"Operation \"%s\" has no function (not implemented)", O->desc);
+		return FALSE;
+	}
+}
+
+BOOL addProjectBuildFile(ProjectDict* project, const char* arg)
+{
+	NSString* filename = [NSString stringWithCString:arg encoding:NSUTF8StringEncoding];
+	__block BOOL success = FALSE;
 	NSString* y;	/* source file */
 	NSString* z;	/* build file */
-	y = [project sourceFile:@"test.m"];
+	y = [project sourceFile:@"test2.m"];
 	z = [project buildFile:y];
-	success = FALSE;
 	[[project targets] enumerateObjectsUsingBlock:^(NSString* target, NSUInteger i, BOOL*stop){
 		NSArray* phases = [project buildPhasesOf: target];
 		[phases enumerateObjectsUsingBlock:^(NSString* phase, NSUInteger j, BOOL*stop2){
@@ -66,9 +210,10 @@ void operateProject(int argc, const char** argv)
 		[project del:y];
 		[project del:z];
 	} else {
-		NSLog(@"added build source file \"%@\" in path XCodeControl", @"test.m");
-		[project addTo:@"children" of:x value:y];
+		NSLog(@"added build source file \"%@\" in path XCodeControl", @"test2.m");
+		[project addTo:@"children" of:[project currentGroup] value:y];
 	}
+	return success;
 }
 
 @implementation ProjectDict
@@ -115,6 +260,25 @@ void operateProject(int argc, const char** argv)
 		ret.midBytes += (hi<<4)+lo;
 	}
 	return ret;
+}
+
+-(void)setCurrentGroup:(NSString*)name ofParent:(NSDictionary*)parent
+{
+	group = [self path:name ofParent:parent];
+}
+
+-(void)setCurrentTarget:(NSString*)name
+{
+	target = name;
+}
+
+-(NSString*)currentGroup
+{
+	return group;
+}
+-(NSString*)currentTarget
+{
+	return target;
 }
 
 -(NSString*)newObjId
@@ -172,9 +336,9 @@ void operateProject(int argc, const char** argv)
 	]];
 }
 
--(NSArray*)buildPhasesOf:(NSString*)target
+-(NSArray*)buildPhasesOf:(NSString*)T
 {
-	return (NSArray*)[[o valueForKey:target] valueForKey:@"buildPhases"];
+	return (NSArray*)[[o valueForKey:T] valueForKey:@"buildPhases"];
 }
 
 -(NSArray*)targets
@@ -255,6 +419,7 @@ void operateProject(int argc, const char** argv)
 	[p removeObjectForKey:@"objects"];	/* replace new objects */
 	[p setValue:o forKey:@"objects"];
 	[projString appendString:[p description]];
+	[projString appendString:"\n"];			/* keep the file sane */
 	projData = [projString dataUsingEncoding:NSUTF8StringEncoding];
 	[projData writeToFile:@"pbxproj.out"  atomically:NO];
 }
