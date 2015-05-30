@@ -201,7 +201,7 @@ BOOL addProjectBuildFile(ProjectDict* project, const char* arg)
 	__block BOOL success = FALSE;
 	NSString* y;	/* source file */
 	NSString* z;	/* build file */
-	y = [project sourceFile:@"test2.m"];
+	y = [project sourceFile:filename];
 	z = [project buildFile:y];
 	[[project targets] enumerateObjectsUsingBlock:^(NSString* target, NSUInteger i, BOOL*stop){
 		NSArray* phases = [project buildPhasesOf: target];
@@ -218,7 +218,7 @@ BOOL addProjectBuildFile(ProjectDict* project, const char* arg)
 		[project del:y];
 		[project del:z];
 	} else {
-		NSLog(@"added build source file \"%@\" in path XCodeControl", @"test2.m");
+		NSLog(@"added build source file \"%@\" in path XCodeControl", filename);
 		[project addTo:@"children" of:[project currentGroup] value:y];
 	}
 	return success;
@@ -427,7 +427,7 @@ BOOL addProjectBuildFile(ProjectDict* project, const char* arg)
 	[p removeObjectForKey:@"objects"];	/* replace new objects */
 	[p setValue:o forKey:@"objects"];
 	[projString appendString:[p description]];
-	[projString appendString:"\n"];			/* keep the file sane */
+	[projString appendString:@"\n"];			/* keep the file sane */
 	projData = [projString dataUsingEncoding:NSUTF8StringEncoding];
 	[projData writeToFile:@"pbxproj.out"  atomically:NO];
 }
