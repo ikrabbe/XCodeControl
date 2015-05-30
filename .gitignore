@@ -1,4 +1,8 @@
+/pbxproj.out
+/guide
 /Build/
 /ModuleCache/
 /XCodeControl/TextIndex/
 /xcode.defaults
+XCodeControl.xcodeproj/project.xcworkspace/
+XCodeControl.xcodeproj/xcuserdata/

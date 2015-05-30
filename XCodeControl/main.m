@@ -8,10 +8,12 @@
 
 #import <Foundation/Foundation.h>
 
+extern void operateProject(int argc, const char** argv);
+
 int main(int argc, const char * argv[]) {
 	@autoreleasepool {
-	    // insert code here...
-	    NSLog(@"Hello, World!");
+		// insert code here...
+		operateProject(argc,argv);
 	}
-    return 0;
+	return 0;
 }
