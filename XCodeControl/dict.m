@@ -36,7 +36,8 @@ typedef struct objectID {
 }
 -(NSString*)filename;
 -(void)save:(NSString*)filename;
--(void)load:(NSString*)filename;
+-(BOOL)load:(NSString*)filename;
+-(BOOL)demandLoad;	/* try to open the single xcodeproj in the current working dir */
 -(void)close;
 -(BOOL)isOpen;
 -(NSString*)sourceFile:(NSString*)sp;
@@ -109,7 +110,6 @@ static int optionId(Option* opts, const char* arg, Option** O); /* returns Optio
 static int shortOperationId(Option* opts, const char* arg, Option** O); /* returns Option.t+1 or 0 */
 static int longOperationId(Option* opts, const char* arg, Option** O); /* returns Option.t+1 or 0 */
 static BOOL operateOn(ProjectDict* project, const Option* O, const char* arg);
-static BOOL testLogOpen(ProjectDict*project, NSString* func);
 
 /* implementation */
 int optionId(Option* opts, const char* arg, Option** O)
@@ -241,16 +241,6 @@ BOOL saveProject(ProjectDict* project, const char* arg)
 	return success;
 }
 
-BOOL testLogOpen(ProjectDict*project, NSString* func)
-{
-	if (![project isOpen]) {
-		NSLog(@"%@: project not open", func);
-		return FALSE;
-	} else {
-		return TRUE;
-	}
-}
-
 BOOL addProjectBuildFile(ProjectDict* project, const char* arg)
 {
 	NSString* fn = [NSString stringWithCString:arg encoding:NSUTF8StringEncoding];
@@ -258,8 +248,10 @@ BOOL addProjectBuildFile(ProjectDict* project, const char* arg)
 	NSString* y;	/* source file */
 	NSString* z;	/* build file */
 
-	if(!testLogOpen(project,@"addProjectBuildFile")) {
-		return false;
+	if (![project isOpen]) {
+		if(![project demandLoad]) {
+			return FALSE;
+		}
 	}
 	y = [project sourceFile:fn];
 	z = [project buildFile:y];
@@ -473,9 +465,47 @@ BOOL addProjectBuildFile(ProjectDict* project, const char* arg)
 	[o removeObjectForKey:id];
 }
 
--(void)load:(NSString*)fn
+-(BOOL)demandLoad
+{
+	NSString* found = @"";
+	NSString* fn = @".xcodeproj";
+	NSURL* loc;
+	NSString* pn;
+	unsigned char cl = [fn length];
+	NSDirectoryEnumerator* fs = [[NSFileManager defaultManager]
+		enumeratorAtURL:[NSURL URLWithString:@"."]
+		includingPropertiesForKeys:nil
+		options:7
+		errorHandler:nil
+	];
+	while(loc = [fs nextObject]) {
+		fn = [loc lastPathComponent];
+		if([fn length]>cl) {
+			NSRange R= {[fn length]-cl, cl};
+			if(NSOrderedSame == [fn compare:@".xcodeproj" options:0 range:R]) {
+				if([found length]>0) {
+					NSLog(@"fatal: more than one .xcodeproj node found in the current directory");
+					return FALSE;
+				}
+				found = fn;
+			}
+		}
+	}
+	if([found length]==0) {
+		NSLog(@"fatal: no .xcodeproj node found in the current directory");
+		return FALSE;
+	}
+	pn = [[NSString alloc] initWithFormat:@"%@/%s",found,"project.pbxproj"];
+	return [self load:pn];
+}
+
+-(BOOL)load:(NSString*)fn
 {
 	NSDictionary* dict = [NSDictionary dictionaryWithContentsOfFile:fn];
+	if(!dict) {
+		NSLog(@"fatal: failed to load project from %@",fn);
+		return FALSE;
+	}
 	filename = fn;
 	p = [[NSMutableDictionary alloc] init];
 	o = [[NSMutableDictionary alloc] init];
@@ -483,6 +513,7 @@ BOOL addProjectBuildFile(ProjectDict* project, const char* arg)
 	[o setDictionary:[p valueForKey:@"objects"]];
 	nextID = [ProjectDict getIdFrom:[[self sortedObjectKeys] lastObject]];
 	[self newObjId];
+	return TRUE;
 }
 
 -(void)save:(NSString*)fn
