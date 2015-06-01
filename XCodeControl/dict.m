@@ -93,9 +93,11 @@ enum OptionNames {
 	optEndOfOptions
 };
 static Option progopts[optEndOfOptions+1] = {
-	{'o',"openProjectFile",optStringArg, "open a project file, that will become the current project",openProject},
+	{'o',"openProjectFile",optStringArg, "open a project file, that will become the current project",
+		openProject},
 	{'s',"saveProjectFile",optStringArg,"save the modified project file.",saveProject},
-	{'b',"buildSourceFile",optStringArg, "add a source file to the current group to be build in all targets", addProjectBuildFile},
+	{'b',"buildSourceFile",optStringArg,
+		"add a source file to the current group to be build in all targets", addProjectBuildFile},
 	{'p',"setGroup",optStringArg,"set current group", NULL},
 	{'t',"setTarget",optStringArg,"set current target", NULL},
 	{'i',"input",optStringArg,"read input file", NULL},
