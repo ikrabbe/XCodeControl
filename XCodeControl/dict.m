@@ -17,8 +17,6 @@ extern void testFunction(void);
 
 /* export */
 @class ProjectDict;
-extern void operateProject(int argc, const char** argv);
-extern BOOL addProjectBuildFile(ProjectDict* proj, const char* arg);
 
 typedef struct objectID {
 	char frontByte[2];
@@ -33,8 +31,14 @@ typedef struct objectID {
 	NSMutableArray* path;
 	NSString* group;
 	NSString* target;
+	NSString* filename;
 	objectID nextID;
 }
+-(NSString*)filename;
+-(void)save:(NSString*)filename;
+-(void)load:(NSString*)filename;
+-(void)close;
+-(BOOL)isOpen;
 -(NSString*)sourceFile:(NSString*)sp;
 -(NSString*)buildFile:(NSString*)fileref;
 -(NSString*)newObjId;
@@ -57,7 +61,16 @@ typedef struct objectID {
 @end
 
 typedef struct Option Option;
-typedef BOOL(*OptionFunction)(ProjectDict* project, const char* arg);
+typedef BOOL (*OptionFunction)(ProjectDict* project, const char* arg);
+
+extern void operateProject(int argc, const char** argv);
+/* option functions
+	for i in openProject saveProject addProjectBuildFile; do echo "extern BOOL $i(ProjectDict* project, const char* arg);" ;done
+*/
+extern BOOL openProject(ProjectDict* project, const char* arg);
+extern BOOL saveProject(ProjectDict* project, const char* arg);
+extern BOOL addProjectBuildFile(ProjectDict* project, const char* arg);
+
 struct Option {
 	char c;	/* single char Option or 0 */
 	char* s;	/* long Option or "" */
@@ -69,6 +82,8 @@ struct Option {
 enum OptionArgType { optNotFound, optNoArg, optIntArg, optStringArg, optCharArg,
 	optArgFlag=8, optEmbeddedArg=16, optLongFlag=32, optAllFlags=8|16|32 };
 enum OptionNames {
+	optOpenProjectFile,
+	optSaveProjectFile,
 	optBuildSourceFile,
 	optSetGroup,
 	optSetTarget,
@@ -78,6 +93,8 @@ enum OptionNames {
 	optEndOfOptions
 };
 static Option progopts[optEndOfOptions+1] = {
+	{'o',"openProjectFile",optStringArg, "open a project file, that will become the current project",openProject},
+	{'s',"saveProjectFile",optStringArg,"save the modified project file.",saveProject},
 	{'b',"buildSourceFile",optStringArg, "add a source file to the current group to be build in all targets", addProjectBuildFile},
 	{'p',"setGroup",optStringArg,"set current group", NULL},
 	{'t',"setTarget",optStringArg,"set current target", NULL},
@@ -90,6 +107,7 @@ static int optionId(Option* opts, const char* arg, Option** O); /* returns Optio
 static int shortOperationId(Option* opts, const char* arg, Option** O); /* returns Option.t+1 or 0 */
 static int longOperationId(Option* opts, const char* arg, Option** O); /* returns Option.t+1 or 0 */
 static BOOL operateOn(ProjectDict* project, const Option* O, const char* arg);
+static BOOL testLogOpen(ProjectDict*project, NSString* func);
 
 /* implementation */
 int optionId(Option* opts, const char* arg, Option** O)
@@ -195,13 +213,53 @@ BOOL operateOn(ProjectDict* project, const Option* O, const char* arg)
 	}
 }
 
+BOOL openProject(ProjectDict* project, const char* arg)
+{
+	NSString* fn = [NSString stringWithCString:arg encoding:NSUTF8StringEncoding];
+	BOOL success = FALSE;
+	if(![project isOpen]) {
+		[project load:fn];
+		success = TRUE;
+	} else {
+		NSLog(@"open: project already open %@ (%@)", [project filename], fn);
+	}
+	return success;
+}
+
+BOOL saveProject(ProjectDict* project, const char* arg)
+{
+	NSString* fn = [NSString stringWithCString:arg encoding:NSUTF8StringEncoding];
+	BOOL success = FALSE;
+	if([project isOpen]) {
+		[project save:fn];
+		success = TRUE;
+	} else {
+		NSLog(@"save: project not open (%@)", fn);
+	}
+	return success;
+}
+
+BOOL testLogOpen(ProjectDict*project, NSString* func)
+{
+	if (![project isOpen]) {
+		NSLog(@"%@: project not open", func);
+		return FALSE;
+	} else {
+		return TRUE;
+	}
+}
+
 BOOL addProjectBuildFile(ProjectDict* project, const char* arg)
 {
-	NSString* filename = [NSString stringWithCString:arg encoding:NSUTF8StringEncoding];
+	NSString* fn = [NSString stringWithCString:arg encoding:NSUTF8StringEncoding];
 	__block BOOL success = FALSE;
 	NSString* y;	/* source file */
 	NSString* z;	/* build file */
-	y = [project sourceFile:filename];
+
+	if(!testLogOpen(project,@"addProjectBuildFile")) {
+		return false;
+	}
+	y = [project sourceFile:fn];
 	z = [project buildFile:y];
 	[[project targets] enumerateObjectsUsingBlock:^(NSString* target, NSUInteger i, BOOL*stop){
 		NSArray* phases = [project buildPhasesOf: target];
@@ -218,7 +276,7 @@ BOOL addProjectBuildFile(ProjectDict* project, const char* arg)
 		[project del:y];
 		[project del:z];
 	} else {
-		NSLog(@"added build source file \"%@\" in path XCodeControl", filename);
+		NSLog(@"added build source file \"%@\" in path XCodeControl", fn);
 		[project addTo:@"children" of:[project currentGroup] value:y];
 	}
 	return success;
@@ -228,14 +286,7 @@ BOOL addProjectBuildFile(ProjectDict* project, const char* arg)
 -(id)init
 {
 	if(self = [super init]) {
-		NSDictionary* dict = [NSDictionary dictionaryWithContentsOfFile:
-			@"XCodeControl.xcodeproj/project.pbxproj"];
-		p = [[NSMutableDictionary alloc] init];
-		o = [[NSMutableDictionary alloc] init];
-		[p setDictionary:dict];
-		[o setDictionary:[p valueForKey:@"objects"]];
-		nextID = [ProjectDict getIdFrom:[[self sortedObjectKeys] lastObject]];
-		[self newObjId];
+		filename = @"";
 	}
 	return self;
 }
@@ -420,20 +471,54 @@ BOOL addProjectBuildFile(ProjectDict* project, const char* arg)
 	[o removeObjectForKey:id];
 }
 
--(void)save
+-(void)load:(NSString*)fn
+{
+	NSDictionary* dict = [NSDictionary dictionaryWithContentsOfFile:fn];
+	filename = fn;
+	p = [[NSMutableDictionary alloc] init];
+	o = [[NSMutableDictionary alloc] init];
+	[p setDictionary:dict];
+	[o setDictionary:[p valueForKey:@"objects"]];
+	nextID = [ProjectDict getIdFrom:[[self sortedObjectKeys] lastObject]];
+	[self newObjId];
+}
+
+-(void)save:(NSString*)fn
 {
 	NSMutableString *projString = [NSMutableString stringWithString:@"// !$*UTF8*$!\n"];
 	NSData* projData;
+	if(0>=[fn length]) {
+		fn = filename;
+	}
 	[p removeObjectForKey:@"objects"];	/* replace new objects */
 	[p setValue:o forKey:@"objects"];
 	[projString appendString:[p description]];
 	[projString appendString:@"\n"];			/* keep the file sane */
 	projData = [projString dataUsingEncoding:NSUTF8StringEncoding];
-	[projData writeToFile:@"pbxproj.out"  atomically:NO];
+	[projData writeToFile:fn atomically:NO];
+	[self close];
+}
+
+-(void)close
+{
+	filename = @"";
+}
+
+-(NSString*)filename
+{
+	return self->filename;
+}
+
+-(BOOL)isOpen
+{
+	return [filename length]>0;
 }
 
 -(void)dealloc
 {
-	[self save];
+	if([self isOpen]) {
+		[self save:@"pbxproj.out"];
+		[self close];
+	}
 }
 @end
