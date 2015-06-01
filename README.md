@@ -19,20 +19,36 @@ I will describe how to customize, in a short amount of time.
 
 # Example
 
+When you checked out the XCodeControl Project to your favourite MacOS with XCode you can compile the program simply with
+
+	xcodebuild -configuration Debug |grep -i 'error:\|warning'
+
+, while the grep just drops all the verbose output and just shows errors or warnings.
+
 If you add `test.m` to the project by
 
-	Build/Debug/XCodeControl -b test.m
+	Build/Debug/XCodeControl -o XCodeControl.xcodeproj/project.pbxproj -b test.m
 
 and
 
-	# be carefull you should save you original file first:
-	# cp XCodeControl.xcodeproj/project.pbxproj pbxproj.save
 	cp pbxproj.out XCodeControl.xcodeproj/project.pbxproj
 
-the file `XCodeControl/test.m` becomes part of the project. You can check this behaviour, for uncommenting the line
+the file `XCodeControl/test.m` becomes part of the project. You can check this behaviour, for uncommenting the line `XCodeControl/dict.m:13`
 
 	// #define TEST_FUNCTION 1
 
-in `XCodeControl/dict.m`. The first output line should then be `success!`.
+. The first output line should then be `success!`.
+
+To revert the modified pbxproj file just
+
+	git checkout HEAD -- XCodeControl.xcodeproj/project.pbxproj
+
+. The project.pbxproj in the repository actually isn't the original, but a replaced version from a read-write cycle of the XCodeControl target itself. You can see the original file in the git history
+
+	git show --name-only b30ee477118da2d322f7fd5b496956a49bc04a17:XCodeControl.xcodeproj/project.pbxproj
+
+# More Documents
+
+While the project evolves I will write some more documents about the structure of the code and how to use, modify and extend it. These documents live in the [`docs/`](docs/) folder.
 
 #### ... more to come soon ... Stay tuned.
