@@ -1,5 +1,8 @@
 all: docs/optionArray.html
 
+push:
+	git push -q github; git push -q kundenweb; git push -q origin master:update
+
 upload: docs/optionArray.html
 	rsync -c highlight.css docs/optionArray.html docs/description.md ingo@zulu1343:/home/eoa/wiki/sites/eoawiki/Anleitung/XCodeControl/docs
 
