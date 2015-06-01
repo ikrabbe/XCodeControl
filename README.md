@@ -6,16 +6,10 @@ A little program to control `pbxproj` files from XCode projects through the comm
 
 Currently the program is in beta stage. It is useable for a very reduced set of operations, actually one operation: You can add files to the default source code path of a xcode project and a build rule, based on the file extension will be added to all targets the project contains.
 
-The pbxproj file is read from a static path `XCodeControl.xcodeproj/project.pbxproj`, so from this project itself. We need an option to control that input file location.
-
-The only option that currently works is `-b` or `--buildSourceFile` to add a source file in the default source file path of the project, here `XCodeControl`, and a build rule to all targets.
-
-The output file is always pbjxproj.out.
+The only operation that currently works is `-b` or `--buildSourceFile`, to add a source file in the default source file path of the project, here `XCodeControl`, and a build rule to all targets.
 
 This behaviour is tested and seems to work.
-The program should be easily to customize.
-
-I will describe how to customize, in a short amount of time.
+It should be easy to customize the program. I will describe how, in a short amount of time.
 
 # Example
 
@@ -50,5 +44,3 @@ To revert the modified pbxproj file just
 # More Documents
 
 While the project evolves I will write some more documents about the structure of the code and how to use, modify and extend it. These documents live in the [`docs/`](docs/) folder.
-
-#### ... more to come soon ... Stay tuned.
