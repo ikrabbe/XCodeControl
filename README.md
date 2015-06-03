@@ -10,7 +10,7 @@ If no file is openend by an `-o` option, the first `*.xcodeproj/project.pbxproj`
 
 The single operation that currently works is `-b` or `--buildSourceFile` to add a source file in the default source file path of the project, here `XCodeControl`, and a build rule to all targets.
 
-The default output file is always pbxproj.out. You can specify `-s ""` (with an empty filename) to save the project where you loaded from. _You should save your pbxproj files with git or backup them before you let a beta beast play with them.
+The default output file is always `./pbxproj.out`. You can specify `-s ""` (with an empty filename) to save the project where you loaded from. _You should save your pbxproj files with git or backup them before you let a beta beast play with them._
 
 This behaviour is tested and seems to work.
 It should be easy to customize the program. I will describe how, in a short amount of time.

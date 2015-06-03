@@ -10,7 +10,9 @@
 #include <string.h>
 #include <time.h>
 
+#define DEBUG_CODE 1
 // #define TEST_FUNCTION 1
+static unsigned char DEBUG_OPTION_PARSER=0;
 
 /* import */
 extern void testFunction(void);
@@ -33,8 +35,12 @@ typedef struct objectID {
 	NSString* target;
 	NSString* filename;
 	objectID nextID;
+	const char* progname;
 }
+-(void)setProgname:(const char*)arg;
+-(const char*)progname;
 -(NSString*)filename;
+-(NSString*)group;
 -(void)save:(NSString*)filename;
 -(BOOL)load:(NSString*)filename;
 -(BOOL)demandLoad;	/* try to open the single xcodeproj in the current working dir */
@@ -66,11 +72,13 @@ typedef BOOL (*OptionFunction)(ProjectDict* project, const char* arg);
 
 extern void operateProject(int argc, const char** argv);
 /* option functions
-	for i in openProject saveProject addProjectBuildFile; do echo "extern BOOL $i(ProjectDict* project, const char* arg);" ;done
+	for i in openProject saveProject addProjectBuildFile addProjectSourceFile cliHelp; do echo "extern BOOL $i(ProjectDict* project, const char* arg);" ;done
 */
 extern BOOL openProject(ProjectDict* project, const char* arg);
 extern BOOL saveProject(ProjectDict* project, const char* arg);
 extern BOOL addProjectBuildFile(ProjectDict* project, const char* arg);
+extern BOOL addProjectSourceFile(ProjectDict* project, const char* arg);
+extern BOOL cliHelp(ProjectDict* project, const char* arg);
 
 struct Option {
 	char c;	/* single char Option or 0 */
@@ -86,6 +94,7 @@ enum OptionNames {
 	optOpenProjectFile,
 	optSaveProjectFile,
 	optBuildSourceFile,
+	optSourceFile,
 	optSetGroup,
 	optSetTarget,
 	optInput,
@@ -99,10 +108,12 @@ static Option progopts[optEndOfOptions+1] = {
 	{'s',"saveProjectFile",optStringArg,"save the modified project file.",saveProject},
 	{'b',"buildSourceFile",optStringArg,
 		"add a source file to the current group to be build in all targets", addProjectBuildFile},
+	{'f',"sourceFile",optStringArg,
+		"add a source file to the current group, not creating a build reference",  addProjectSourceFile},
 	{'p',"setGroup",optStringArg,"set current group", NULL},
 	{'t',"setTarget",optStringArg,"set current target", NULL},
 	{'i',"input",optStringArg,"read input file", NULL},
-	{'h',"help",optStringArg|optArgFlag,"show help for Option", NULL},
+	{'h',"help",optStringArg|optArgFlag,"show help for Option", cliHelp},
 	{0,"targetSourceFile",optStringArg,"add a source file to the current target", NULL},
 	{0,"",0,"end of options", NULL}
 };
@@ -171,11 +182,10 @@ void operateProject(int argc, const char** argv)
 	int optid = 0, argtype = 0;
 	Option* O = NULL;
 	const char* arg = "";
+	[project setProgname:argv[0]];
 #ifdef TEST_FUNCTION
 	testFunction();
 #endif
-	[project setCurrentGroup:@"XCodeControl" ofParent:[project main]];	/* FIXME: change to first main group */
-	/* FIXME: set current target to first target */
 	for(i=1; i<argc; ++i) {
 		if(argtype > 0) {
 			arg = argv[i];
@@ -187,19 +197,36 @@ void operateProject(int argc, const char** argv)
 			optid = optionId(progopts, argv[i], &O);
 			argtype = optid&~optAllFlags;
 			if(argtype == 0) {
-				NSLog(@"Option failure %d", optid);
+				NSLog(@"Option failure %s: %d", argv[i], optid);
 				return;
-			} else if(optid&optEmbeddedArg) {
-				if(optid&optLongFlag) {
-					arg = argv[i]+strlen(O->s)+1;
-				} else {
-					arg = argv[i]+1;
+			} else {
+#ifdef DEBUG_CODE
+				if (DEBUG_OPTION_PARSER&1) {
+					NSLog(@"debug option \"%s\" argtypeid:%d", O->desc, optid);
 				}
-				operateOn(project, O, arg);
-				argtype = 0;
-				O = NULL;
-				argtype = 0;
+#endif
+				if(optid&optEmbeddedArg) {
+					if(optid&optLongFlag) {
+						arg = argv[i]+strlen(O->s)+1;
+					} else {
+						arg = argv[i]+1;
+					}
+					operateOn(project, O, arg);
+					argtype = 0;
+					O = NULL;
+					argtype = 0;
+				}
 			}
+		}
+	}
+	if(O != NULL) {
+		if((optid&optArgFlag) > 0) {
+			operateOn(project,O,arg);
+			arg="";
+			O = NULL;
+			argtype = 0;
+		} else {
+			NSLog(@"missing argument for %s\n", O->desc);
 		}
 	}
 }
@@ -213,6 +240,38 @@ BOOL operateOn(ProjectDict* project, const Option* O, const char* arg)
 		NSLog(@"Operation \"%s\" has no function (not implemented)", O->desc);
 		return FALSE;
 	}
+}
+
+BOOL cliHelp(ProjectDict* project, const char* arg)
+{
+	Option* op, *opts = progopts;
+	fprintf(stderr, "%s [arguments]: Read/Modify/Write a XCode pbxproject File\n", [project progname]);
+	fprintf(stderr, "arguments are read and executed in the order they are given.\n");
+	for(op=opts; op->t>0;++op) {
+		const char* argDesc;
+		const char* impl = "";
+		char c = op->c==0?' ':op->c;
+		if(op->t == 1) {
+			argDesc = "no argument";
+		} else if (op->t == 2) {
+			argDesc = "Integer";
+		} else if (op->t == 3) {
+			argDesc = "String";
+		} else if (op->t == 4) {
+			argDesc = "Character";
+		} else if (op->t == 10) {
+			argDesc = "Integer, optional";
+		} else if (op->t == 11) {
+			argDesc = "String, optional";
+		} else if (op->t == 12) {
+			argDesc = "Character, optional";
+		}
+		if(op->func==0) {
+			impl = "TODO";
+		}
+		fprintf(stderr, "\t-%c, --%-16s  %-16s — %s %s\n", c, op->s, argDesc, op->desc, impl);
+	}
+	return TRUE;
 }
 
 BOOL openProject(ProjectDict* project, const char* arg)
@@ -270,11 +329,27 @@ BOOL addProjectBuildFile(ProjectDict* project, const char* arg)
 		[project del:y];
 		[project del:z];
 	} else {
-		NSLog(@"added build source file \"%@\" in path XCodeControl", fn);
+		NSLog(@"added build source file \"%@\" in path %@",
+			fn,
+			[[project obj:[project currentGroup]] valueForKey:@"path"]
+		);
 		[project addTo:@"children" of:[project currentGroup] value:y];
 	}
 	return success;
 }
+
+BOOL addProjectSourceFile(ProjectDict* project, const char* arg)
+{
+	NSString* fn = [NSString stringWithCString:arg encoding:NSUTF8StringEncoding];
+	if (![project isOpen]) {
+		if(![project demandLoad]) {
+			return FALSE;
+		}
+	}
+	[project sourceFile:fn];	/* just add a source file */
+	return TRUE;
+}
+
 
 @implementation ProjectDict
 -(id)init
@@ -283,6 +358,16 @@ BOOL addProjectBuildFile(ProjectDict* project, const char* arg)
 		filename = @"";
 	}
 	return self;
+}
+
+-(void)setProgname:(const char*)arg;
+{
+	progname = arg;
+}
+
+-(const char*)progname
+{
+	return progname;
 }
 
 /** randomize next key
@@ -319,6 +404,8 @@ BOOL addProjectBuildFile(ProjectDict* project, const char* arg)
 {
 	group = [self path:name ofParent:parent];
 }
+
+-(NSString*)group { return group; }
 
 -(void)setCurrentTarget:(NSString*)name
 {
@@ -427,9 +514,13 @@ BOOL addProjectBuildFile(ProjectDict* project, const char* arg)
 		NSDictionary* O = [self obj:i];
 		NSString* t = [O valueForKey:@"isa"];
 		if(NSOrderedSame == [t compare:@"PBXGroup"]) {
-			NSString* N = [O valueForKey:@"name"];
-			if (NSOrderedSame == [N compare:name]) {
+			if([name length]==0) {
 				return i;
+			} else {
+				NSString* N = [O valueForKey:@"path"];
+				if (NSOrderedSame == [N compare:name]) {
+					return i;
+				}
 			}
 		}
 	}
@@ -513,6 +604,8 @@ BOOL addProjectBuildFile(ProjectDict* project, const char* arg)
 	[o setDictionary:[p valueForKey:@"objects"]];
 	nextID = [ProjectDict getIdFrom:[[self sortedObjectKeys] lastObject]];
 	[self newObjId];
+	[self setCurrentGroup:@"" ofParent:[self main]];
+	/* FIXME: set current target to first target */
 	return TRUE;
 }
 
@@ -528,7 +621,7 @@ BOOL addProjectBuildFile(ProjectDict* project, const char* arg)
 	[projString appendString:[p description]];
 	[projString appendString:@"\n"];			/* keep the file sane */
 	projData = [projString dataUsingEncoding:NSUTF8StringEncoding];
-	[projData writeToFile:fn atomically:NO];
+	[projData writeToFile:fn atomically:YES];
 	[self close];
 }
 
