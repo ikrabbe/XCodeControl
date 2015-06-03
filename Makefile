@@ -1,4 +1,4 @@
-all: docs/optionArray.html
+all: docs/optionArray.html docs/description.md
 
 push: docs/optionArray.html docs/description.md upload
 	git push -q github; git push -q kundenweb; git push -q origin master:update
