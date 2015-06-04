@@ -117,6 +117,7 @@ static Option progopts[optEndOfOptions+1] = {
 	{0,"targetSourceFile",optStringArg,"add a source file to the current target", NULL},
 	{0,"",0,"end of options", NULL}
 };
+
 static int optionId(Option* opts, const char* arg, Option** O); /* returns Option.t+1 or 0 */
 static int shortOperationId(Option* opts, const char* arg, Option** O); /* returns Option.t+1 or 0 */
 static int longOperationId(Option* opts, const char* arg, Option** O); /* returns Option.t+1 or 0 */
@@ -267,9 +268,9 @@ BOOL cliHelp(ProjectDict* project, const char* arg)
 			argDesc = "Character, optional";
 		}
 		if(op->func==0) {
-			impl = "TODO";
+			impl = " — TODO: This has to be implemented";
 		}
-		fprintf(stderr, "\t-%c, --%-16s  %-16s — %s %s\n", c, op->s, argDesc, op->desc, impl);
+		fprintf(stderr, "\t-%c, --%-16s  %-16s — %-30s%s\n", c, op->s, argDesc, op->desc, impl);
 	}
 	return TRUE;
 }
